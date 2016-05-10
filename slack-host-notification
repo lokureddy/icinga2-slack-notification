@@ -1,0 +1,57 @@
+#!/usr/bin/perl
+
+use strict;
+use warnings;
+use WebService::Slack::WebApi;
+use Env;
+use Config::IniFiles;
+use Switch;
+
+
+
+# this uses the webapi. use https://api.slack.com/web to get a token
+
+my $cfg_file = shift;
+if (! -f $cfg_file) {
+    print STDERR "No configuration given or file not found.\nUsage: slack-notification <config.ini>\n";
+    exit 1;
+}
+
+my $cfg = Config::IniFiles->new( -file => $cfg_file );
+
+if (! defined($cfg->val('Authentication', 'Token'))) {
+    print STDERR "Token not defined in configfile";
+    exit 1;
+}
+
+my $hoststate = $ENV{HOSTSTATE};
+
+my $icon = '';
+switch ($hoststate) {
+    case "DOWN" { 
+        $icon = defined($cfg->val('Format', 'DOWN')) ? 
+            $cfg->val('Format', 'CRITICAL') : ''; }
+    case "OK" {
+        $icon = defined($cfg->val('Format', 'OK')) ?
+            $cfg->val('Format', 'OK') : ''; }
+    case "UNKNOWN" {
+        $icon = defined($cfg->val('Format', 'UNKNOWN')) ?
+            $cfg->val('Format', 'UNKNOWN') : ''; }
+
+}
+
+my $icinga_hostname = $cfg->val('General', 'WebHostname');
+
+my $slack = WebService::Slack::WebApi->new(token => $cfg->val('Authentication', 'Token'));
+
+my $posted_message = $slack->chat->post_message(
+    channel => $cfg->val('General', 'Channel') || '#general',
+    text => sprintf (
+    '%s HOST: <http://%s/icingaweb2/monitoring/host/show?host=%s|%s>  STATE: %s',
+    $icon,
+    $icinga_hostname,
+    $ENV{HOSTNAME},
+    $ENV{HOSTALIAS},
+    $hoststate ),
+    username => 'icinga2'
+);
